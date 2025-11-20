@@ -98,6 +98,11 @@ class EncryptCompareApp(tk.Tk):
         clear_btn = ttk.Button(btn_frame, text="Curăță", command=self.on_clear)
         clear_btn.pack(side=tk.LEFT)
 
+   
+        benchmark_btn = ttk.Button(btn_frame, text="Benchmark", command=self.benchmark_encryption)
+        benchmark_btn.pack(side=tk.LEFT)
+
+
         # Results: 3 panels (DES, 3DES, AES)
         results_frame = ttk.Frame(self, padding=10)
         results_frame.pack(fill=tk.BOTH, expand=True)
@@ -122,6 +127,11 @@ class EncryptCompareApp(tk.Tk):
         txt_b64 = ttk.Entry(parent)
         txt_b64.pack(fill=tk.X, pady=(0,6))
 
+        lbl_cipher_b32 = ttk.Label(parent, text="Ciphertext (base32):")
+        lbl_cipher_b32.pack(anchor=tk.W)
+        txt_b32 = ttk.Entry(parent)
+        txt_b32.pack(fill=tk.X, pady=(0,6))
+
         meta_frame = ttk.Frame(parent)
         meta_frame.pack(fill=tk.X, pady=(4,0))
         labels = {}
@@ -135,6 +145,7 @@ class EncryptCompareApp(tk.Tk):
         out['txt_hex'] = txt_hex
         out['txt_b64'] = txt_b64
         out['labels'] = labels
+        out['txt_b32'] = txt_b32
         return out
 
     def on_clear(self):
@@ -144,6 +155,7 @@ class EncryptCompareApp(tk.Tk):
             p['txt_hex'].delete("1.0", tk.END)
             p['txt_hex'].configure(state="disabled")
             p['txt_b64'].delete(0, tk.END)
+            p['txt_b32'].delete(0,tk.END)
             for lbl in p['labels'].values():
                 lbl.config(text="")
 
@@ -183,6 +195,8 @@ class EncryptCompareApp(tk.Tk):
         # base64
         p['txt_b64'].delete(0, tk.END)
         p['txt_b64'].insert(0, base64.b64encode(meta['ciphertext']).decode())
+        p['txt_b32'].delete(0, tk.END)
+        p['txt_b32'].insert(0, base64.b32encode(meta['ciphertext']).decode())
 
         # labels
         labels = p['labels']
@@ -197,6 +211,84 @@ class EncryptCompareApp(tk.Tk):
         if exec_time is not None:
             sec_note += f" (t_exec ≈ {exec_time*1000:.2f} ms)"
         labels["Timp_executie"].config(text=sec_note)
+
+   
+    def benchmark_encryption(self):
+        # Ia textul din textArea
+        plaintext = self.input_text.get("1.0", tk.END).rstrip("\n")
+        
+        data = plaintext.encode()
+        
+        # Mesaj de progres
+        progress = tk.Toplevel(self)
+        progress.title("Benchmark în curs...")
+        progress.geometry("350x120")
+        ttk.Label(progress, text="Rulez benchmark (50 iterații)...").pack(pady=10)
+        
+        # Adaugă o bară de progres
+        progress_bar = ttk.Progressbar(progress, length=300, mode='determinate', maximum=50)
+        progress_bar.pack(pady=10)
+        progress_label = ttk.Label(progress, text="0/50")
+        progress_label.pack()
+        progress.update()
+        
+        des_times = []
+        tdes_times = []
+        aes_times = []
+        
+        try:
+            for i in range(100):
+                # DES
+                t0 = time.perf_counter()
+                encrypt_des(data)
+                t1 = time.perf_counter()
+                des_times.append(t1-t0)
+                
+                # 3DES
+                t2 = time.perf_counter()
+                encrypt_3des(data)
+                t3 = time.perf_counter()
+                tdes_times.append(t3-t2)
+                
+                # AES
+                t4 = time.perf_counter()
+                encrypt_aes(data)
+                t5 = time.perf_counter()
+                aes_times.append(t5-t4)
+                
+                # Actualizează progresul
+                progress_bar['value'] = i + 1
+                progress_label.config(text=f"{i+1}/50")
+                progress.update()
+            
+            progress.destroy()
+            
+            # Calculează rezultatele
+            des_avg = sum(des_times) / len(des_times) * 1000
+            tdes_avg = sum(tdes_times) / len(tdes_times) * 1000
+            aes_avg = sum(aes_times) / len(aes_times) * 1000
+            
+            # Afișează rezultatele detaliate
+            result = f"""Rezultate Benchmark (mediu pe 100 de iterații):
+            
+    Text testat: "{plaintext[:50]}{'...' if len(plaintext) > 50 else ''}"
+    Lungime text: {len(plaintext)} caractere
+
+    Timp mediu de execuție:
+    DES:   {des_avg:.3f} ms
+    3DES:  {tdes_avg:.3f} ms  
+    AES:   {aes_avg:.3f} ms
+
+    Raport de viteză:
+    3DES vs DES: {des_avg/tdes_avg:.2f}x ({'mai rapid' if tdes_avg < des_avg else 'mai lent'})
+    AES vs DES: {des_avg/aes_avg:.2f}x ({'mai rapid' if aes_avg < des_avg else 'mai lent'})
+    AES vs 3DES: {tdes_avg/aes_avg:.2f}x ({'mai rapid' if aes_avg < tdes_avg else 'mai lent'})"""
+            
+            messagebox.showinfo("Rezultate Benchmark", result)
+            
+        except Exception as e:
+            progress.destroy()
+            messagebox.showerror("Eroare", f"A apărut o eroare în timpul benchmark-ului:\n{str(e)}")
 
 # === Run ===
 if __name__ == "__main__":
